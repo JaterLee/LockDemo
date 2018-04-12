@@ -7,6 +7,8 @@
 //
 
 #import "AppDelegate+Example.h"
+#import <libkern/OSSpinLockDeprecated.h>
+#import <os/lock.h>
 
 @implementation AppDelegate (Example)
 
@@ -244,7 +246,7 @@
 
 - (void)exampleForDispatchSemaphore {
     NSLog(@"11111");
-    dispatch_semaphore_t signal = dispatch_semaphore_create(1);
+    dispatch_semaphore_t signal = dispatch_semaphore_create(0);
     dispatch_time_t overTime = dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC);
     
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
@@ -275,4 +277,46 @@
      */
 }
 
+- (void)exampleForOSSpinLock {
+    if (@available(iOS 10.0, *)) {
+        __block os_unfair_lock lock = OS_UNFAIR_LOCK_INIT;
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            os_unfair_lock_lock(&lock);
+            NSLog(@"线程1");
+            sleep(10);
+            os_unfair_lock_unlock(&lock);
+            NSLog(@"线程1解锁成功");
+        });
+        
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            sleep(1);
+            os_unfair_lock_lock(&lock);
+            NSLog(@"线程2");
+            os_unfair_lock_unlock(&lock);
+        });
+    };
+    
+    /*
+     Thread 3: EXC_BAD_INSTRUCTION (code=EXC_I386_INVOP, subcode=0x0)
+     发生 死锁!
+     代码 {
+     __block os_unfair_lock_t lock = &(OS_UNFAIR_LOCK_INIT);
+     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+     os_unfair_lock_lock(lock); <--- 发生 crash, 具体原因不是很清楚, os_unfair_lock 和 os_unfair_lock_t 区别是 前者为 Structure 后者为 Type Alias 这个后面研究下
+     .....
+     })
+     }
+     
+     2018-04-12 11:07:36.421153+0800 LockDemo[65043:6878621] 线程1
+     2018-04-12 11:07:36.538 LockDemo[65043:6878467]  INFO: Reveal Server started (Protocol Version 25).
+     2018-04-12 11:07:46.425484+0800 LockDemo[65043:6878621] 线程1解锁成功
+     2018-04-12 11:07:46.425505+0800 LockDemo[65043:6878631] 线程2
+     
+     拿上面的输出结果和上文 NSLock 的输出结果做对比,会发现 sleep(10)的情况,OSSpinLock 和 哦是_unfair_lock 中的线程2并没有和线程1解锁成功在一个时间输出, 而 NSLock 这里是同一时间输出, 而是有点时间间隔,所以 OSSpinLock 和 os_unfair_lock 一直在做着轮询,而不是想 NSLock 一样先轮询,再 waiting 等唤醒
+     */
+}
+
+- (void)exampleForPthreadMutex {
+    
+}
 @end

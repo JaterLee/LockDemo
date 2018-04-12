@@ -22,5 +22,9 @@
 
 - (void)exampleForDispatchSemaphore;
 
+- (void)exampleForOSSpinLock;
+
+- (void)exampleForPthreadMutex;
+
 @end
 
